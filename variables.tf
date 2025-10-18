@@ -85,3 +85,9 @@ variable "private_subnet_cidr_blocks" {
     "10.0.116.0/24"
   ]
 }
+
+variable "instances_per_subnet" {
+  description = "Numeros de EC2 por subnets privadas"
+  type        = number
+  default     = 2
+}
