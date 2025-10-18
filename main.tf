@@ -1,5 +1,5 @@
-provider "aws"{
-    region = var.aws_region
+provider "aws" {
+  region = var.aws_region
 }
 
 data "aws_availability_zones" "available" {
@@ -28,6 +28,15 @@ module "vpc" {
   map_public_ip_on_launch = false
 }
 
+data "aws_ami" "amazon_linux" {
+  most_recent = true
+  owners      = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["amzn2-ami-hvm-*-x86_64-gp2"]
+  }
+}
 
 module "app_security_group" {
   source  = "terraform-aws-modules/security-group/aws//modules/web"
@@ -58,7 +67,6 @@ resource "random_string" "lb_id" {
 }
 
 
-
 module "elb_http" {
   source  = "terraform-aws-modules/elb/aws"
   version = "3.0.1"
@@ -69,8 +77,8 @@ module "elb_http" {
   security_groups = [module.lb_security_group.security_group_id]
   subnets         = module.vpc.public_subnets
 
-  number_of_instances = 2
-  instances           = [aws_instance.app_a.id, aws_instance.app_b.id]
+  number_of_instances = length(aws_instance.app)
+  instances           = aws_instance.app.*.id
 
   listener = [{
     instance_port     = "80"
@@ -88,39 +96,15 @@ module "elb_http" {
   }
 }
 
-resource "aws_instance" "app_a" {
+resource "aws_instance" "app" {
   depends_on = [module.vpc]
+
+  count = var.instances_per_subnet * length(module.vpc.private_subnets)
 
   ami           = data.aws_ami.amazon_linux.id
   instance_type = var.instance_type
 
-  subnet_id              = module.vpc.private_subnets[0]
-  vpc_security_group_ids = [module.app_security_group.security_group_id]
-
-  user_data = <<-EOF
-    #!/bin/bash
-    sudo yum update -y
-    sudo yum install httpd -y
-    sudo systemctl enable httpd
-    sudo systemctl start httpd
-    echo "<html><body><div>Hello, world!</div></body></html>" > /var/www/html/index.html
-    EOF
-
-  tags = {
-    Terraform   = "true"
-    Project     = var.project_name
-    Environment = var.environment
-  }
-}
-
-
-resource "aws_instance" "app_b" {
-  depends_on = [module.vpc]
-
-  ami           = data.aws_ami.amazon_linux.id
-  instance_type = var.instance_type
-
-  subnet_id              = module.vpc.private_subnets[1]
+  subnet_id              = module.vpc.private_subnets[count.index % length(module.vpc.private_subnets)]
   vpc_security_group_ids = [module.app_security_group.security_group_id]
 
   user_data = <<-EOF
